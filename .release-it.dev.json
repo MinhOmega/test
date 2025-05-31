@@ -1,0 +1,13 @@
+{
+  "git": {
+    "requireBranch": ["develop", "feature/*", "dev", "feat/*", "fix/*", "refactor/*", "chore/*", "docs/*", "test/*", "style/*", "perf/*", "build/*", "ci/*", "revert/*", "merge/*"],
+    "commitMessage": "chore: dev release v${version}"
+  },
+  "github": {
+    "releaseName": "Development Release v${version}",
+    "preRelease": true
+  },
+  "hooks": {
+    "after:bump": ["pnpm build", "echo 'Building development release'"]
+  }
+}
