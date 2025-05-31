@@ -1,6 +1,6 @@
 {
   "name": "test-release-it",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -35,7 +35,9 @@
       "publish": false
     },
     "hooks": {
-      "before:init": ["pnpm lint"],
+      "before:init": [
+        "pnpm lint"
+      ],
       "after:bump": "pnpm build",
       "after:release": "echo Successfully released ${name} v${version}"
     },
