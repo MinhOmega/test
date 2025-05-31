@@ -1,15 +1,15 @@
 {
   "name": "test-release-it",
-  "version": "0.1.0",
+  "version": "0.2.1-beta.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "ci:release:production": "pnpm release-it --ci",
-    "ci:release:staging": "pnpm release-it --ci --git.requireBranch='main,staging' --github.releaseName='Staging Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building staging release'",
-    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='develop,feature/*,dev,feat/*,fix/*,refactor/*,chore/*,docs/*,test/*,style/*,perf/*,build/*,ci/*,revert/*,merge/*' --git.commitMessage='chore: dev release v${version}' --github.releaseName='Development Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building development release'"
+    "ci:release:production": "pnpm release-it --ci --git.requireBranch='main'",
+    "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --github.releaseName='Staging Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building staging release'",
+    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='Development Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building development release'"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -24,8 +24,7 @@
     "git": {
       "commitMessage": "chore: release v${version}",
       "tagName": "v${version}",
-      "requireCleanWorkingDir": true,
-      "requireBranch": "main"
+      "requireCleanWorkingDir": true
     },
     "github": {
       "release": true,
@@ -36,7 +35,9 @@
       "publish": false
     },
     "hooks": {
-      "before:init": ["pnpm lint"],
+      "before:init": [
+        "pnpm lint"
+      ],
       "after:bump": "pnpm build",
       "after:release": "echo Successfully released ${name} v${version}"
     },
