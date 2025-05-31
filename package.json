@@ -29,7 +29,7 @@
     "github": {
       "release": true,
       "releaseName": "Release v${version}",
-      "releaseNotes": "git log --pretty=format:\"%h %s\" v${latestVersion}..v${version}",
+      "releaseNotes": "git log --pretty=format:\"%h %s\" v${latestVersion}..HEAD",
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
