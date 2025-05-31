@@ -24,8 +24,7 @@
     "git": {
       "commitMessage": "chore: release v${version}",
       "tagName": "v${version}",
-      "requireCleanWorkingDir": true,
-      "requireBranch": "main"
+      "requireCleanWorkingDir": true
     },
     "github": {
       "release": true,
