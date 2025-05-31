@@ -1,6 +1,6 @@
 {
   "name": "test-release-it",
-  "version": "0.2.1-beta.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -29,6 +29,7 @@
     "github": {
       "release": true,
       "releaseName": "Release v${version}",
+      "releaseNotes": "git log --pretty=format:\"%h %s\" v${latestVersion}..v${version}",
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
@@ -60,6 +61,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "conventional-changelog-cli": "^5.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "release-it": "^19.0.3",
