@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write  # Required to create GitHub releases and push commits
+      contents: write  # Required to create GitHub releases
       pull-requests: read  # Required to fetch PR data for release notes
 
     env:
       NODE_VERSION: 20
-      PNPM_VERSION: 10  # Updated to match package.json requirement (>=10.0.0)
+      PNPM_VERSION: 10
 
     steps:
       - name: Checkout repository
@@ -26,15 +26,19 @@ jobs:
         with:
           fetch-depth: 0  # Fetch full history for git log and tag comparison
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4  # Updated to latest version
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      - name: Verify pnpm version
+        run: pnpm --version
 
       - name: Install dependencies
         run: pnpm install
