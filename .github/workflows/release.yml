@@ -82,6 +82,9 @@ jobs:
       - name: Run release-it
         run: $RELEASE_CMD
 
+      - name: Debug Commit Message
+        run: git log -1 --pretty=%B
+
       - name: Get latest tag
         id: latest_tag
         run: |
