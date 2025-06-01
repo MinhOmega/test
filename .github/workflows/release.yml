@@ -1,79 +1,67 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: "Release Type"
-        required: true
-        default: "production"
-        type: choice
-        options:
-          - production
-          - staging
-          - dev
+  push:
+    branches:
+      - dev
+      - staging
+      - main
 
 jobs:
   release:
-    name: Release
+    name: Release on ${{ github.ref_name }}
     runs-on: ubuntu-latest
+
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: write  # Required to create GitHub releases
+
+    env:
+      NODE_VERSION: 20
+      PNPM_VERSION: 8
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
-      - name: Setup pnpm
+      - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 9
-          run_install: false
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Install dependencies
         run: pnpm install
 
-      - name: Configure Git
+      - name: Lint
+        run: pnpm lint
+
+      - name: Set release variables
+        id: vars
         run: |
-          git config --global user.name "${GITHUB_ACTOR}"
-          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          BRANCH="${GITHUB_REF##*/}"
+          case "$BRANCH" in
+            dev)
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=dev --preRelease=beta --git.commitMessage='chore: dev release v\${version}' --github.releaseName='[DEV] Release v\${version}' --github.preRelease=true" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=staging --preRelease=rc --git.commitMessage='chore: staging release v\${version}' --github.releaseName='[STAGING] Release v\${version}' --github.preRelease=true" >> "$GITHUB_ENV"
+              ;;
+            main)
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=main --git.commitMessage='chore: release v\${version}' --github.releaseName='Release v\${version}'" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Branch $BRANCH is not supported for release." && exit 1
+              ;;
+          esac
 
-      - name: Production Release
-        if: ${{ github.event.inputs.release_type == 'production' }}
-        run: pnpm ci:release:production
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build project
+        run: pnpm build
 
-      - name: Staging Release
-        if: ${{ github.event.inputs.release_type == 'staging' }}
-        run: pnpm ci:release:staging
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Development Release
-        if: ${{ github.event.inputs.release_type == 'dev' }}
-        run: pnpm ci:release:dev
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Release
+        run: $RELEASE_CMD
