@@ -28,8 +28,8 @@ jobs:
 
       - name: Configure Git user
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -73,6 +73,9 @@ jobs:
               ;;
           esac
 
+      - name: Build project
+        run: pnpm build
+
       - name: Run release-it
         run: $RELEASE_CMD
 
@@ -82,11 +85,24 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0)
           echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_ENV"
 
+      - name: Set release title
+        run: |
+          BRANCH="${GITHUB_REF##*/}"
+          case "$BRANCH" in
+            dev)
+              echo "RELEASE_TITLE=[DEV] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "RELEASE_TITLE=[STAGING] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+            main)
+              echo "RELEASE_TITLE=Release ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+          esac
+
       - name: Generate and create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Generate release notes using GitHub CLI
-          RELEASE_NOTES=$(gh release create "${{ env.LATEST_TAG }}" --generate-notes ${{ env.PRERELEASE_FLAG }} --title "${{ github.event.repository.name }} ${{ env.LATEST_TAG }}" --repo "${{ github.repository }}")
-          echo "Release created with notes:"
-          echo "$RELEASE_NOTES"
+          gh release create "${{ env.LATEST_TAG }}" --generate-notes ${{ env.PRERELEASE_FLAG }} --title "${{ env.RELEASE_TITLE }}" --repo "${{ github.repository }}"
