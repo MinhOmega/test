@@ -1,6 +1,6 @@
 {
   "name": "test-release-it",
-  "version": "0.2.4-beta.1",
+  "version": "0.2.4-rc.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
