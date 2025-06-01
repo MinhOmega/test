@@ -9,7 +9,7 @@
     "lint": "next lint",
     "ci:release:production": "pnpm release-it --ci --git.requireBranch='main'",
     "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --github.releaseName='[STAGING] Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building staging release'",
-    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='[DEV] Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building development release'"
+    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='[DEV] Release v${version}' --github.preRelease=true --github.draft=true --hooks.after:bump='pnpm build && echo Building development release'"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -29,7 +29,6 @@
     "github": {
       "release": true,
       "releaseName": "Release v${version}",
-      "releaseNotes": "git log --pretty=format:\"%h %s\" v${latestVersion}..HEAD | grep -v '^.*Merge pull request'",
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
