@@ -13,16 +13,18 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write  # Required to create GitHub releases
+      contents: write  # Required to create GitHub releases and push commits
+      pull-requests: read  # Required to fetch PR data for release notes
 
     env:
       NODE_VERSION: 20
-      PNPM_VERSION: 8
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PNPM_VERSION: 10  # Updated to match package.json requirement (>=10.0.0)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for git log and tag comparison
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,15 +33,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4  # Updated to latest version
         with:
           version: ${{ env.PNPM_VERSION }}
 
@@ -55,21 +49,36 @@ jobs:
           BRANCH="${GITHUB_REF##*/}"
           case "$BRANCH" in
             dev)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=dev --preRelease=beta --git.commitMessage='chore: dev release v\${version}' --github.releaseName='[DEV] Release v\${version}' --github.preRelease=true" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=dev --preRelease=beta --git.commitMessage='chore: dev release v\${version}' --github.releaseName='[DEV] Release v\${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             staging)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=staging --preRelease=rc --git.commitMessage='chore: staging release v\${version}' --github.releaseName='[STAGING] Release v\${version}' --github.preRelease=true" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=staging --preRelease=rc --git.commitMessage='chore: staging release v\${version}' --github.releaseName='[STAGING] Release v\${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             main)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=main --git.commitMessage='chore: release v\${version}' --github.releaseName='Release v\${version}'" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=main --git.commitMessage='chore: release v\${version}' --github.releaseName='Release v\${version}' --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
               ;;
             *)
               echo "Branch $BRANCH is not supported for release." && exit 1
               ;;
           esac
 
-      - name: Build project
-        run: pnpm build
-
-      - name: Run Release
+      - name: Run release-it
         run: $RELEASE_CMD
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_ENV"
+
+      - name: Generate and create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Generate release notes using GitHub CLI
+          RELEASE_NOTES=$(gh release create "${{ env.LATEST_TAG }}" --generate-notes ${{ env.PRERELEASE_FLAG }} --title "${{ github.event.repository.name }} ${{ env.LATEST_TAG }}" --repo "${{ github.repository }}")
+          echo "Release created with notes:"
+          echo "$RELEASE_NOTES"

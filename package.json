@@ -29,6 +29,7 @@
     "github": {
       "release": true,
       "releaseName": "Release v${version}",
+      "releaseNotes": "gh release view v${version} --repo ${github.repository} --json body --jq .body || echo '## What''s Changed\n'$(git log v${latestVersion}..HEAD --pretty=format:'* %s by @%an in https://github.com/${github.repository}/pull/%H\n' | grep -v 'Merge pull request' | sort -u)\n\n**Full Changelog**: https://github.com/${github.repository}/compare/v${latestVersion}...v${version}",
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
