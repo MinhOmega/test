@@ -92,3 +92,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$LATEST_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+
+      - name: Start next development cycle on dev
+        if: github.ref_name == 'main'
+        run: |
+          git fetch origin
+          git checkout -b dev origin/dev
+          pnpm release-it --ci --increment=patch --preRelease=beta --git.commitMessage="chore: start v${version} [skip ci]" --git.push --no-git.requireBranch
