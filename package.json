@@ -1,6 +1,6 @@
 {
   "name": "test-release-it",
-  "version": "0.2.1",
+  "version": "0.2.2-beta.7",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "ci:release:production": "pnpm release-it --ci --git.requireBranch='main'",
-    "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --github.releaseName='Staging Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building staging release'",
-    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='Development Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building development release'"
+    "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --github.releaseName='[STAGING] Release v${version}' --github.preRelease=true --hooks.after:bump='pnpm build && echo Building staging release'",
+    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='[DEV] Release v${version}' --github.preRelease=true --github.draft=true --hooks.after:bump='pnpm build && echo Building development release'"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -22,13 +22,13 @@
   },
   "release-it": {
     "git": {
-      "commitMessage": "chore: release v${version}",
       "tagName": "v${version}",
       "requireCleanWorkingDir": true
     },
     "github": {
       "release": true,
       "releaseName": "Release v${version}",
+      "releaseNotes": "gh release view v${version} --repo ${github.repository} --json body --jq .body || echo '## What''s Changed\n'$(git log v${latestVersion}..HEAD --pretty=format:'* %s by @%an in https://github.com/${github.repository}/pull/%H\n' | grep -v 'Merge pull request' | sort -u)\n\n**Full Changelog**: https://github.com/${github.repository}/compare/v${latestVersion}...v${version}",
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
@@ -60,6 +60,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "conventional-changelog-cli": "^5.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "release-it": "^19.0.3",

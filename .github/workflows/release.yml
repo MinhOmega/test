@@ -1,79 +1,111 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: "Release Type"
-        required: true
-        default: "production"
-        type: choice
-        options:
-          - production
-          - staging
-          - dev
+  push:
+    branches:
+      - dev
+      - staging
+      - main
 
 jobs:
   release:
-    name: Release
+    name: Release on ${{ github.ref_name }}
     runs-on: ubuntu-latest
+
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: write  # Required to create GitHub releases and push commits
+      pull-requests: read  # Required to fetch PR data for release notes
+
+    env:
+      NODE_VERSION: 20
+      PNPM_VERSION: 10
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Fetch full history for git log and tag comparison
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-          run_install: false
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Verify pnpm version
+        run: pnpm --version
 
       - name: Install dependencies
         run: pnpm install
 
-      - name: Configure Git
+      - name: Lint
+        run: pnpm lint
+
+      - name: Set release variables
+        id: vars
         run: |
-          git config --global user.name "${GITHUB_ACTOR}"
-          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          BRANCH="${GITHUB_REF##*/}"
+          case "$BRANCH" in
+            dev)
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=dev --preRelease=beta --github.releaseName=\"[DEV] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=staging --preRelease=rc --github.releaseName=\"[STAGING] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
+              ;;
+            main)
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=main --github.releaseName=\"Release v\${version}\" --no-github.release" >> "$GITHUB_ENV"
+              echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Branch $BRANCH is not supported for release." && exit 1
+              ;;
+          esac
 
-      - name: Production Release
-        if: ${{ github.event.inputs.release_type == 'production' }}
-        run: pnpm ci:release:production
+      - name: Debug RELEASE_CMD
+        run: echo "$RELEASE_CMD"
+
+      - name: Run release-it
+        run: $RELEASE_CMD
+
+      - name: Debug Commit Message
+        run: git log -1 --pretty=%B
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_ENV"
+
+      - name: Set release title
+        run: |
+          BRANCH="${GITHUB_REF##*/}"
+          case "$BRANCH" in
+            dev)
+              echo "RELEASE_TITLE=[DEV] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "RELEASE_TITLE=[STAGING] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+            main)
+              echo "RELEASE_TITLE=Release ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Generate and create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Staging Release
-        if: ${{ github.event.inputs.release_type == 'staging' }}
-        run: pnpm ci:release:staging
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Development Release
-        if: ${{ github.event.inputs.release_type == 'dev' }}
-        run: pnpm ci:release:dev
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Generate release notes using GitHub CLI
+          gh release create "${{ env.LATEST_TAG }}" --generate-notes ${{ env.PRERELEASE_FLAG }} --title "${{ env.RELEASE_TITLE }}" --repo "${{ github.repository }}"
