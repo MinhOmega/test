@@ -57,21 +57,24 @@ jobs:
           BRANCH="${GITHUB_REF##*/}"
           case "$BRANCH" in
             dev)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=dev --preRelease=beta --git.commitMessage='chore: dev release v${version}' --github.releaseName='[DEV] Release v${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=dev --preRelease=beta --git.commitMessage='chore: bump version v${version}' --github.releaseName='[DEV] Release v${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             staging)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=staging --preRelease=rc --git.commitMessage='chore: staging release v${version}' --github.releaseName='[STAGING] Release v${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=staging --preRelease=rc --git.commitMessage='chore: bump version v${version}' --github.releaseName='[STAGING] Release v${version}' --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             main)
-              echo "RELEASE_CMD=pnpm release-it --ci --git.requireBranch=main --git.commitMessage='chore: release v${version}' --github.releaseName='Release v${version}' --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=main --git.commitMessage='chore: bump version v${version}' --github.releaseName='Release v${version}' --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
               ;;
             *)
               echo "Branch $BRANCH is not supported for release." && exit 1
               ;;
           esac
+
+      - name: Debug RELEASE_CMD
+        run: echo "$RELEASE_CMD"
 
       - name: Build project
         run: pnpm build
