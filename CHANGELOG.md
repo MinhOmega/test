@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2-beta.2](https://github.com/MinhOmega/test/compare/v0.2.2-beta.1...v0.2.2-beta.2) (2025-06-01)
+
 ## [0.2.2-beta.1](https://github.com/MinhOmega/test/compare/v0.2.2-beta.0...v0.2.2-beta.1) (2025-06-01)
 
 ## [0.2.2-beta.0](https://github.com/MinhOmega/test/compare/v0.2.1...v0.2.2-beta.0) (2025-05-31)
