@@ -57,15 +57,15 @@ jobs:
           BRANCH="${GITHUB_REF##*/}"
           case "$BRANCH" in
             dev)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=dev --preRelease=beta --git.commitMessage=\"chore: bump version v\${version}\" --github.releaseName=\"[DEV] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=dev --preRelease=beta --github.releaseName=\"[DEV] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             staging)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=staging --preRelease=rc --git.commitMessage=\"chore: bump version v\${version}\" --github.releaseName=\"[STAGING] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=staging --preRelease=rc --github.releaseName=\"[STAGING] Release v\${version}\" --github.preRelease=true --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
               ;;
             main)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=main --git.commitMessage=\"chore: bump version v\${version}\" --github.releaseName=\"Release v\${version}\" --no-github.release" >> "$GITHUB_ENV"
+              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=main --github.releaseName=\"Release v\${version}\" --no-github.release" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
               ;;
             *)
