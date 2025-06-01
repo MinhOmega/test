@@ -76,9 +76,6 @@ jobs:
       - name: Debug RELEASE_CMD
         run: echo "$RELEASE_CMD"
 
-      - name: Build project
-        run: pnpm build
-
       - name: Run release-it
         run: $RELEASE_CMD
 
