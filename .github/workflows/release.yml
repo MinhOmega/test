@@ -76,11 +76,11 @@ jobs:
       - name: Debug RELEASE_CMD
         run: echo "$RELEASE_CMD"
 
-      - name: Build project
-        run: pnpm build
-
       - name: Run release-it
         run: $RELEASE_CMD
+
+      - name: Debug Commit Message
+        run: git log -1 --pretty=%B
 
       - name: Get latest tag
         id: latest_tag
