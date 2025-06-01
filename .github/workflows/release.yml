@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write  # Required to create GitHub releases and push commits
-      pull-requests: read  # Required to fetch PR data for release notes
+      contents: write
+      pull-requests: read
 
     env:
       NODE_VERSION: 20
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history for git log and tag comparison
+          fetch-depth: 0
 
       - name: Configure Git user
         run: |
@@ -51,61 +51,44 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Set release variables
-        id: vars
+      - name: Set branch-specific variables
         run: |
-          BRANCH="${GITHUB_REF##*/}"
+          BRANCH="${{ github.ref_name }}"
           case "$BRANCH" in
             dev)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=dev --preRelease=beta --github.releaseName=\"[DEV] Release v\${version}\" --github.preRelease=true --no-github.release --git.commitMessage=\"chore: bump version %s\"" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
+              echo "RELEASE_SCRIPT=ci:release:dev" >> "$GITHUB_ENV"
+              echo "RELEASE_TITLE_PREFIX=[DEV] " >> "$GITHUB_ENV"
               ;;
             staging)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=staging --preRelease=rc --github.releaseName=\"[STAGING] Release v\${version}\" --github.preRelease=true --no-github.release --git.commitMessage=\"chore: bump version %s\"" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
+              echo "RELEASE_SCRIPT=ci:release:staging" >> "$GITHUB_ENV"
+              echo "RELEASE_TITLE_PREFIX=[STAGING] " >> "$GITHUB_ENV"
               ;;
             main)
-              echo "RELEASE_CMD=pnpm release-it --ci --debug --git.requireBranch=main --github.releaseName=\"Release v\${version}\" --no-github.release --git.commitMessage=\"chore: bump version %s\"" >> "$GITHUB_ENV"
               echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
+              echo "RELEASE_SCRIPT=ci:release:production" >> "$GITHUB_ENV"
+              echo "RELEASE_TITLE_PREFIX=Release " >> "$GITHUB_ENV"
               ;;
             *)
               echo "Branch $BRANCH is not supported for release." && exit 1
               ;;
           esac
 
-      - name: Debug RELEASE_CMD
-        run: echo "$RELEASE_CMD"
-
-      - name: Run release-it
-        run: $RELEASE_CMD
-
-      - name: Debug Commit Message
-        run: git log -1 --pretty=%B
+      - name: Run release script
+        run: pnpm ${{ env.RELEASE_SCRIPT }}
 
       - name: Get latest tag
-        id: latest_tag
         run: |
           LATEST_TAG=$(git describe --tags --abbrev=0)
           echo "LATEST_TAG=$LATEST_TAG" >> "$GITHUB_ENV"
 
       - name: Set release title
         run: |
-          BRANCH="${GITHUB_REF##*/}"
-          case "$BRANCH" in
-            dev)
-              echo "RELEASE_TITLE=[DEV] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
-              ;;
-            staging)
-              echo "RELEASE_TITLE=[STAGING] ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
-              ;;
-            main)
-              echo "RELEASE_TITLE=Release ${{ env.LATEST_TAG }}" >> "$GITHUB_ENV"
-              ;;
-          esac
+          echo "RELEASE_TITLE=$RELEASE_TITLE_PREFIX$LATEST_TAG" >> "$GITHUB_ENV"
 
       - name: Generate and create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Generate release notes using GitHub CLI
-          gh release create "${{ env.LATEST_TAG }}" --generate-notes ${{ env.PRERELEASE_FLAG }} --title "${{ env.RELEASE_TITLE }}" --repo "${{ github.repository }}"
+          gh release create "$LATEST_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
