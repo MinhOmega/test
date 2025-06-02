@@ -1,15 +1,13 @@
 {
   "name": "test-release-it",
-  "version": "0.2.4-beta.1",
+  "version": "0.2.5",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: release v${version}' --no-github.release --github.preRelease=true && echo \"Building development release\"",
-    "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --git.commitMessage='chore: release v${version}' --no-github.release --github.preRelease=true && echo \"Building staging release\"",
-    "ci:release:production": "pnpm release-it --ci --git.requireBranch='main' --git.commitMessage='chore: release v${version}' --no-github.release && echo \"Building production release\""
+    "release": "pnpm release-it"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -38,9 +36,16 @@
       "before:init": [
         "pnpm lint"
       ],
-      "after:bump": "pnpm build",
       "after:release": "echo Successfully released ${name} v${version}"
-    }
+    },
+    "plugins": {
+      "@release-it/conventional-changelog": {
+        "infile": "CHANGELOG.md",
+        "preset": "angular"
+      }
+    },
+    "skipVersion": true,
+    "increment": false
   },
   "engines": {
     "node": ">=20.0.0",
@@ -48,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@release-it/conventional-changelog": "^10.0.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
