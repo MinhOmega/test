@@ -17,6 +17,8 @@ on:
           - main
   push:
     branches:
+      - dev
+      - staging
       - main
 
 jobs:
@@ -159,7 +161,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+          if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
+            # Find the previous release tag
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
+            if [[ -z "$PREVIOUS_TAG" ]]; then
+              # If no previous tag, get the first commit
+              PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+            fi
+            
+            # Generate changelog
+            echo "Generating changelog from $PREVIOUS_TAG to $NEW_TAG"
+            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "CHANGELOG.md"
+            
+            # Create release with changelog
+            gh release create "$NEW_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+          else
+            # For non-main branches, just create the release with auto-generated notes
+            gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+          fi
 
       - name: Start next development cycle on dev
         if: env.RELEASE_BRANCH == 'main'

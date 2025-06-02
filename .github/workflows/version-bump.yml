@@ -131,6 +131,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Set release title and prerelease flag based on branch
           if [[ "$TARGET_BRANCH" == "dev" ]]; then
             RELEASE_TITLE="[DEV] $VERSION_TAG"
             PRERELEASE_FLAG="--prerelease"
@@ -142,4 +143,21 @@ jobs:
             PRERELEASE_FLAG=""
           fi
 
-          gh release create "$VERSION_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+          if [[ "$TARGET_BRANCH" == "main" ]]; then
+            # Find the previous release tag
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
+            if [[ -z "$PREVIOUS_TAG" ]]; then
+              # If no previous tag, get the first commit
+              PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+            fi
+            
+            # Generate changelog
+            echo "Generating changelog from $PREVIOUS_TAG to $VERSION_TAG"
+            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "CHANGELOG.md"
+            
+            # Create release with changelog
+            gh release create "$VERSION_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+          else
+            # For non-main branches, just create the release with auto-generated notes
+            gh release create "$VERSION_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+          fi
