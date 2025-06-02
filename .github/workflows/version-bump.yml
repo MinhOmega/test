@@ -1,0 +1,145 @@
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to bump version on"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - staging
+          - main
+      bump_type:
+        description: "Type of version bump"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump-version:
+    name: Bump version on ${{ github.event.inputs.branch }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      NODE_VERSION: 20
+      PNPM_VERSION: 10
+      BUMP_TYPE: ${{ github.event.inputs.bump_type }}
+      TARGET_BRANCH: ${{ github.event.inputs.branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Get current version from package.json
+        id: package_version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
+          echo "Current version: $PACKAGE_VERSION"
+
+      - name: Bump version
+        id: bump_version
+        run: |
+          # Extract version components
+          MAJOR=$(echo $PACKAGE_VERSION | cut -d. -f1)
+          MINOR=$(echo $PACKAGE_VERSION | cut -d. -f2)
+          PATCH=$(echo $PACKAGE_VERSION | cut -d. -f3)
+
+          # Bump version based on input
+          if [[ "$BUMP_TYPE" == "patch" ]]; then
+            PATCH=$((PATCH + 1))
+          elif [[ "$BUMP_TYPE" == "minor" ]]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          elif [[ "$BUMP_TYPE" == "major" ]]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+          echo "Bumped to version: $NEW_VERSION"
+
+      - name: Set branch-specific variables
+        run: |
+          BRANCH="${{ env.TARGET_BRANCH }}"
+          case "$BRANCH" in
+            dev)
+              echo "VERSION_TAG=v${NEW_VERSION}-beta.0" >> "$GITHUB_ENV"
+              echo "VERSION_PREFIX=beta" >> "$GITHUB_ENV"
+              ;;
+            staging)
+              echo "VERSION_TAG=v${NEW_VERSION}-rc.0" >> "$GITHUB_ENV"
+              echo "VERSION_PREFIX=rc" >> "$GITHUB_ENV"
+              ;;
+            main)
+              echo "VERSION_TAG=v${NEW_VERSION}" >> "$GITHUB_ENV"
+              echo "VERSION_PREFIX=" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Update package.json version
+        run: |
+          # Update package.json with the new version
+          npx json -I -f package.json -e "this.version='$NEW_VERSION'"
+
+          # Commit the changes and push
+          git add package.json
+          git commit -m "chore: bump version to v${NEW_VERSION} [skip ci]"
+          git push origin $TARGET_BRANCH
+
+      - name: Create and push git tag
+        run: |
+          git tag $VERSION_TAG
+          git push origin $VERSION_TAG
+          echo "Created new tag: $VERSION_TAG"
+
+      - name: Generate and create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "$TARGET_BRANCH" == "dev" ]]; then
+            RELEASE_TITLE="[DEV] $VERSION_TAG"
+            PRERELEASE_FLAG="--prerelease"
+          elif [[ "$TARGET_BRANCH" == "staging" ]]; then
+            RELEASE_TITLE="[STAGING] $VERSION_TAG"
+            PRERELEASE_FLAG="--prerelease"
+          else
+            RELEASE_TITLE="Release $VERSION_TAG"
+            PRERELEASE_FLAG=""
+          fi
+
+          gh release create "$VERSION_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"

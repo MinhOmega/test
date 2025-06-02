@@ -1,16 +1,28 @@
 name: Release
 
 on:
+  schedule:
+    # Run at 12AM GMT+7 (5PM UTC)
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to release from"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - staging
+          - main
   push:
     branches:
-      - dev
-      - staging
       - main
 
 jobs:
   release:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    name: Release on ${{ github.ref_name }}
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    name: Release on ${{ github.event.inputs.branch || github.ref_name }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -20,12 +32,14 @@ jobs:
     env:
       NODE_VERSION: 20
       PNPM_VERSION: 10
+      RELEASE_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_BRANCH }}
 
       - name: Configure Git user
         run: |
@@ -54,7 +68,7 @@ jobs:
 
       - name: Set branch-specific variables
         run: |
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="${{ env.RELEASE_BRANCH }}"
           case "$BRANCH" in
             dev)
               echo "PRERELEASE_FLAG=--prerelease" >> "$GITHUB_ENV"
@@ -85,7 +99,7 @@ jobs:
       - name: Get latest tag for branch
         id: get_latest_tag
         run: |
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="${{ env.RELEASE_BRANCH }}"
           PACKAGE_VERSION=$PACKAGE_VERSION
 
           # Get the base version without any pre-release identifiers
@@ -148,28 +162,34 @@ jobs:
           gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
 
       - name: Start next development cycle on dev
-        if: github.ref_name == 'main'
+        if: env.RELEASE_BRANCH == 'main'
         run: |
           git fetch origin
           git checkout -b dev origin/dev
 
-          # Get the base version from package.json
+          # Get the current version from package.json
           DEV_PACKAGE_VERSION=$(node -p "require('./package.json').version")
 
-          # Check if a beta tag already exists for this version
-          EXISTING_BETA_TAG=$(git tag -l "v${DEV_PACKAGE_VERSION}-beta.*" | sort -V | tail -n 1 || echo "")
+          # Extract version components and increment patch version
+          MAJOR=$(echo $DEV_PACKAGE_VERSION | cut -d. -f1)
+          MINOR=$(echo $DEV_PACKAGE_VERSION | cut -d. -f2)
+          PATCH=$(echo $DEV_PACKAGE_VERSION | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          NEW_DEV_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          if [[ -z "$EXISTING_BETA_TAG" ]]; then
-            # No beta tag exists for this version, create first one
-            NEXT_BETA_TAG="v${DEV_PACKAGE_VERSION}-beta.0"
-          else
-            # Extract the beta number and increment it
-            BETA_NUM=$(echo $EXISTING_BETA_TAG | sed -E 's/.*beta\.([0-9]+)$/\1/')
-            BETA_NUM=$((BETA_NUM + 1))
-            NEXT_BETA_TAG="v${DEV_PACKAGE_VERSION}-beta.${BETA_NUM}"
-          fi
+          # Update package.json with the new version
+          npx json -I -f package.json -e "this.version='$NEW_DEV_VERSION'"
 
+          # Create a new beta tag for the new version
+          NEXT_BETA_TAG="v${NEW_DEV_VERSION}-beta.0"
+
+          # Commit the changes and push
+          git add package.json
+          git commit -m "chore: start next development cycle v${NEW_DEV_VERSION} [skip ci]"
+          git push origin dev
+
+          # Create and push the new tag
           git tag $NEXT_BETA_TAG
           git push origin $NEXT_BETA_TAG
 
-          echo "Created new development tag: $NEXT_BETA_TAG"
+          echo "Created new development version: $NEW_DEV_VERSION with tag $NEXT_BETA_TAG"
