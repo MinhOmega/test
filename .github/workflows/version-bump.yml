@@ -155,6 +155,16 @@ jobs:
             echo "Generating changelog from $PREVIOUS_TAG to $VERSION_TAG"
             node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "CHANGELOG.md"
             
+            # Commit the updated CHANGELOG.md
+            if git diff --quiet -- CHANGELOG.md; then
+              echo "No changes to CHANGELOG.md"
+            else
+              echo "Committing updated CHANGELOG.md"
+              git add CHANGELOG.md
+              git commit -m "docs: update CHANGELOG.md for $VERSION_TAG [skip ci]"
+              git push origin $TARGET_BRANCH
+            fi
+            
             # Create release with changelog
             gh release create "$VERSION_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
           else
