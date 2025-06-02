@@ -86,46 +86,50 @@ jobs:
         id: get_latest_tag
         run: |
           BRANCH="${{ github.ref_name }}"
+          PACKAGE_VERSION=$PACKAGE_VERSION
+
+          # Get the base version without any pre-release identifiers
+          BASE_VERSION=$PACKAGE_VERSION
+
           # Try to get the latest tag for this branch pattern
           if [[ "$BRANCH" == "dev" ]]; then
-            LATEST_TAG=$(git tag -l "v*-beta.*" | sort -V | tail -n 1 || echo "")
-          elif [[ "$BRANCH" == "staging" ]]; then
-            LATEST_TAG=$(git tag -l "v*-rc.*" | sort -V | tail -n 1 || echo "")
-          elif [[ "$BRANCH" == "main" ]]; then
-            LATEST_TAG=$(git tag -l "v*" | grep -v "-" | sort -V | tail -n 1 || echo "")
-          fi
-
-          # If no tag exists for this branch pattern, use the package.json version as base
-          if [[ -z "$LATEST_TAG" ]]; then
-            if [[ "$BRANCH" == "dev" ]]; then
-              NEW_TAG="v$PACKAGE_VERSION-beta.1"
-            elif [[ "$BRANCH" == "staging" ]]; then
-              NEW_TAG="v$PACKAGE_VERSION-rc.1"
-            elif [[ "$BRANCH" == "main" ]]; then
-              NEW_TAG="v$PACKAGE_VERSION"
-            fi
-          else
-            # Increment the existing tag
-            if [[ "$BRANCH" == "dev" ]]; then
+            # Find latest beta tag with this base version
+            LATEST_TAG=$(git tag -l "v${BASE_VERSION}-beta.*" | sort -V | tail -n 1 || echo "")
+            if [[ -z "$LATEST_TAG" ]]; then
+              # No beta tag exists for this version, create first one
+              NEW_TAG="v${BASE_VERSION}-beta.0"
+            else
               # Extract the beta number and increment it
               BETA_NUM=$(echo $LATEST_TAG | sed -E 's/.*beta\.([0-9]+)$/\1/')
               BETA_NUM=$((BETA_NUM + 1))
-              BASE_VERSION=$(echo $LATEST_TAG | sed -E 's/(v[0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+/\1/')
-              NEW_TAG="${BASE_VERSION}-beta.${BETA_NUM}"
-            elif [[ "$BRANCH" == "staging" ]]; then
+              NEW_TAG="v${BASE_VERSION}-beta.${BETA_NUM}"
+            fi
+          elif [[ "$BRANCH" == "staging" ]]; then
+            # Find latest rc tag with this base version
+            LATEST_TAG=$(git tag -l "v${BASE_VERSION}-rc.*" | sort -V | tail -n 1 || echo "")
+            if [[ -z "$LATEST_TAG" ]]; then
+              # No rc tag exists for this version, create first one
+              NEW_TAG="v${BASE_VERSION}-rc.0"
+            else
               # Extract the rc number and increment it
               RC_NUM=$(echo $LATEST_TAG | sed -E 's/.*rc\.([0-9]+)$/\1/')
               RC_NUM=$((RC_NUM + 1))
-              BASE_VERSION=$(echo $LATEST_TAG | sed -E 's/(v[0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+/\1/')
-              NEW_TAG="${BASE_VERSION}-rc.${RC_NUM}"
-            elif [[ "$BRANCH" == "main" ]]; then
-              # Increment the patch version for main
-              VERSION=$(echo $LATEST_TAG | sed 's/v//')
-              MAJOR=$(echo $VERSION | cut -d. -f1)
-              MINOR=$(echo $VERSION | cut -d. -f2)
-              PATCH=$(echo $VERSION | cut -d. -f3)
+              NEW_TAG="v${BASE_VERSION}-rc.${RC_NUM}"
+            fi
+          elif [[ "$BRANCH" == "main" ]]; then
+            # Check if the exact version tag already exists
+            EXACT_VERSION_TAG=$(git tag -l "v${BASE_VERSION}" | head -n 1 || echo "")
+            if [[ -n "$EXACT_VERSION_TAG" ]]; then
+              # Version tag already exists, we need to increment the patch version
+              MAJOR=$(echo $BASE_VERSION | cut -d. -f1)
+              MINOR=$(echo $BASE_VERSION | cut -d. -f2)
+              PATCH=$(echo $BASE_VERSION | cut -d. -f3)
               PATCH=$((PATCH + 1))
               NEW_TAG="v$MAJOR.$MINOR.$PATCH"
+              echo "Warning: Version v${BASE_VERSION} already exists as a tag. Incrementing to $NEW_TAG"
+            else
+              # Use the exact version from package.json
+              NEW_TAG="v${BASE_VERSION}"
             fi
           fi
 
@@ -149,14 +153,21 @@ jobs:
           git fetch origin
           git checkout -b dev origin/dev
 
-          # Extract version components from the new tag
-          VERSION=$(echo $NEW_TAG | sed 's/v//')
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
+          # Get the base version from package.json
+          DEV_PACKAGE_VERSION=$(node -p "require('./package.json').version")
 
-          # Create next beta version based on the new release
-          NEXT_BETA_TAG="v$MAJOR.$MINOR.$PATCH-beta.1"
+          # Check if a beta tag already exists for this version
+          EXISTING_BETA_TAG=$(git tag -l "v${DEV_PACKAGE_VERSION}-beta.*" | sort -V | tail -n 1 || echo "")
+
+          if [[ -z "$EXISTING_BETA_TAG" ]]; then
+            # No beta tag exists for this version, create first one
+            NEXT_BETA_TAG="v${DEV_PACKAGE_VERSION}-beta.0"
+          else
+            # Extract the beta number and increment it
+            BETA_NUM=$(echo $EXISTING_BETA_TAG | sed -E 's/.*beta\.([0-9]+)$/\1/')
+            BETA_NUM=$((BETA_NUM + 1))
+            NEXT_BETA_TAG="v${DEV_PACKAGE_VERSION}-beta.${BETA_NUM}"
+          fi
 
           git tag $NEXT_BETA_TAG
           git push origin $NEXT_BETA_TAG
