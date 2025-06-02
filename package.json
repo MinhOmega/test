@@ -1,6 +1,6 @@
 {
   "name": "test-release-it",
-  "version": "0.2.4-beta.1",
+  "version": "0.2.5",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -9,7 +9,8 @@
     "lint": "next lint",
     "ci:release:dev": "pnpm release-it --ci --git.requireBranch='dev' --preRelease=beta --git.commitMessage='chore: release v${version}' --no-github.release --github.preRelease=true && echo \"Building development release\"",
     "ci:release:staging": "pnpm release-it --ci --git.requireBranch='staging' --preRelease=rc --git.commitMessage='chore: release v${version}' --no-github.release --github.preRelease=true && echo \"Building staging release\"",
-    "ci:release:production": "pnpm release-it --ci --git.requireBranch='main' --git.commitMessage='chore: release v${version}' --no-github.release && echo \"Building production release\""
+    "ci:release:production": "pnpm release-it --ci --git.requireBranch='main' --git.commitMessage='chore: release v${version}' --no-github.release && echo \"Building production release\"",
+    "ci:release:manual": "pnpm release-it"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -32,7 +33,8 @@
       "tokenRef": "GITHUB_TOKEN"
     },
     "npm": {
-      "publish": false
+      "publish": false,
+      "version": "false"
     },
     "hooks": {
       "before:init": [
