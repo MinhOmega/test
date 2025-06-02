@@ -165,8 +165,16 @@ jobs:
               git push origin $TARGET_BRANCH
             fi
             
-            # Create release with changelog
-            gh release create "$VERSION_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+            # Generate release-specific changelog for release notes
+            echo "Generating release notes for GitHub release"
+            RELEASE_NOTES_FILE="RELEASE_NOTES_$VERSION_TAG.md"
+            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "$RELEASE_NOTES_FILE" "release-notes"
+            
+            # Create release with release-specific changelog
+            gh release create "$VERSION_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+            
+            # Clean up temporary file
+            rm -f "$RELEASE_NOTES_FILE"
           else
             # For non-main branches, just create the release with auto-generated notes
             gh release create "$VERSION_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
