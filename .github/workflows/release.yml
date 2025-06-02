@@ -3,7 +3,7 @@ name: Release
 on:
   schedule:
     # Run at 12AM GMT+7 (5PM UTC) - only for dev branch
-    - cron: "0 17 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       branch:
@@ -17,7 +17,6 @@ on:
           - production
   push:
     branches:
-      - dev
       - staging
       - production
 
