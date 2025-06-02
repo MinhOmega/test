@@ -2,7 +2,7 @@ name: Release
 
 on:
   schedule:
-    # Run at 12AM GMT+7 (5PM UTC)
+    # Run at 12AM GMT+7 (5PM UTC) - only for dev branch
     - cron: "0 17 * * *"
   workflow_dispatch:
     inputs:
@@ -14,14 +14,16 @@ on:
         options:
           - dev
           - staging
-          - main
+          - production
   push:
     branches:
-      - main
+      - dev
+      - staging
+      - production
 
 jobs:
   release:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    if: ${{ (!contains(github.event.head_commit.message, '[skip ci]') && (github.ref_name == 'dev' || github.event_name != 'schedule')) || github.event_name == 'workflow_dispatch' }}
     name: Release on ${{ github.event.inputs.branch || github.ref_name }}
     runs-on: ubuntu-latest
 
@@ -31,7 +33,6 @@ jobs:
 
     env:
       NODE_VERSION: 20
-      PNPM_VERSION: 10
       RELEASE_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
 
     steps:
@@ -46,16 +47,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
+      - name: Setup Node.js with corepack
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
+
+      - name: Install pnpm
+        run: |
+          corepack enable
+          npm install -g pnpm@9.12.3
 
       - name: Verify pnpm version
         run: pnpm --version
@@ -80,7 +81,7 @@ jobs:
               echo "RELEASE_TITLE_PREFIX=[STAGING] " >> "$GITHUB_ENV"
               echo "VERSION_PREFIX=rc" >> "$GITHUB_ENV"
               ;;
-            main)
+            production)
               echo "PRERELEASE_FLAG=" >> "$GITHUB_ENV"
               echo "RELEASE_TITLE_PREFIX=Release " >> "$GITHUB_ENV"
               echo "VERSION_PREFIX=" >> "$GITHUB_ENV"
@@ -130,7 +131,7 @@ jobs:
               RC_NUM=$((RC_NUM + 1))
               NEW_TAG="v${BASE_VERSION}-rc.${RC_NUM}"
             fi
-          elif [[ "$BRANCH" == "main" ]]; then
+          elif [[ "$BRANCH" == "production" ]]; then
             # Check if the exact version tag already exists
             EXACT_VERSION_TAG=$(git tag -l "v${BASE_VERSION}" | head -n 1 || echo "")
             if [[ -n "$EXACT_VERSION_TAG" ]]; then
@@ -159,7 +160,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
+          if [[ "${{ env.RELEASE_BRANCH }}" == "production" ]]; then
             # Find the previous release tag
             PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
             if [[ -z "$PREVIOUS_TAG" ]]; then
@@ -192,12 +193,12 @@ jobs:
             # Clean up temporary file
             rm -f "$RELEASE_NOTES_FILE"
           else
-            # For non-main branches, just create the release with auto-generated notes
+            # For non-production branches, just create the release with auto-generated notes
             gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
           fi
 
       - name: Start next development cycle on dev
-        if: env.RELEASE_BRANCH == 'main'
+        if: env.RELEASE_BRANCH == 'production'
         run: |
           git fetch origin
           git checkout -b dev origin/dev
