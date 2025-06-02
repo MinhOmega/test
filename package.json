@@ -34,7 +34,7 @@
     },
     "npm": {
       "publish": false,
-      "version": "false"
+      "version": false
     },
     "hooks": {
       "before:init": [
