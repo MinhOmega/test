@@ -91,6 +91,15 @@ function getCommitsBetweenTags(fromTag, toTag) {
       .split('\n')
       .map((line) => {
         const [hash, subject, author, email] = line.split('|');
+
+        // Skip GitHub Actions bot commits
+        if (
+          email === '41898282+github-actions[bot]@users.noreply.github.com' ||
+          author === 'github-actions[bot]'
+        ) {
+          return null;
+        }
+
         const parsedCommit = parseCommitMessage(subject);
 
         if (!parsedCommit) return null;
@@ -214,7 +223,36 @@ function generateChangelog(fromTag, toTag) {
 const changelog = generateChangelog(fromTag, toTag);
 
 if (outputFile) {
-  fs.writeFileSync(outputFile, changelog);
+  // Check if file exists and read its content
+  let existingContent = '';
+  try {
+    if (fs.existsSync(outputFile)) {
+      existingContent = fs.readFileSync(outputFile, 'utf8');
+    }
+  } catch (error) {
+    console.error(`Error reading existing changelog: ${error.message}`);
+  }
+
+  // If this is the first entry, just write the new changelog
+  if (!existingContent) {
+    fs.writeFileSync(outputFile, changelog);
+  } else {
+    // Otherwise, prepend the new changelog to the existing content
+    // Find the first heading (# [...]) in the existing content
+    const firstHeadingMatch = existingContent.match(/^# \[.*?\]/m);
+
+    if (firstHeadingMatch) {
+      const index = existingContent.indexOf(firstHeadingMatch[0]);
+      // Insert the new changelog before the first existing entry
+      const updatedContent = `${existingContent.substring(0, index)}${changelog}\n\n${existingContent.substring(index)}`;
+
+      fs.writeFileSync(outputFile, updatedContent);
+    } else {
+      // If no existing heading found, just append
+      fs.writeFileSync(outputFile, `${changelog}\n\n${existingContent}`);
+    }
+  }
+
   console.log(`Changelog written to ${outputFile}`);
 } else {
   console.log(changelog);
