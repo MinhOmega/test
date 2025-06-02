@@ -17,8 +17,6 @@ on:
           - main
   push:
     branches:
-      - dev
-      - staging
       - main
 
 jobs:
@@ -172,6 +170,16 @@ jobs:
             # Generate changelog
             echo "Generating changelog from $PREVIOUS_TAG to $NEW_TAG"
             node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "CHANGELOG.md"
+            
+            # Commit the updated CHANGELOG.md
+            if git diff --quiet -- CHANGELOG.md; then
+              echo "No changes to CHANGELOG.md"
+            else
+              echo "Committing updated CHANGELOG.md"
+              git add CHANGELOG.md
+              git commit -m "docs: update CHANGELOG.md for $NEW_TAG [skip ci]"
+              git push origin ${{ env.RELEASE_BRANCH }}
+            fi
             
             # Create release with changelog
             gh release create "$NEW_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
