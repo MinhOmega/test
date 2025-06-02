@@ -167,8 +167,8 @@ jobs:
               PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
             fi
             
-            # Generate changelog
-            echo "Generating changelog from $PREVIOUS_TAG to $NEW_TAG"
+            # Generate full changelog for CHANGELOG.md file
+            echo "Generating full changelog for CHANGELOG.md"
             node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "CHANGELOG.md"
             
             # Commit the updated CHANGELOG.md
@@ -181,8 +181,16 @@ jobs:
               git push origin ${{ env.RELEASE_BRANCH }}
             fi
             
-            # Create release with changelog
-            gh release create "$NEW_TAG" --notes-file "CHANGELOG.md" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+            # Generate release-specific changelog for release notes
+            echo "Generating release notes for GitHub release"
+            RELEASE_NOTES_FILE="RELEASE_NOTES_$NEW_TAG.md"
+            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "$RELEASE_NOTES_FILE" "release-notes"
+            
+            # Create release with release-specific changelog
+            gh release create "$NEW_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+            
+            # Clean up temporary file
+            rm -f "$RELEASE_NOTES_FILE"
           else
             # For non-main branches, just create the release with auto-generated notes
             gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
