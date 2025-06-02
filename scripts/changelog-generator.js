@@ -17,11 +17,11 @@ const COMMIT_TYPES = {
 };
 
 // Get arguments
-const [fromTag, toTag, outputFile] = process.argv.slice(2);
+const [fromTag, toTag, outputFile, mode = 'changelog'] = process.argv.slice(2);
 
 if (!fromTag || !toTag) {
   console.error(
-    'Usage: node changelog-generator.js <fromTag> <toTag> [outputFile]',
+    'Usage: node changelog-generator.js <fromTag> <toTag> [outputFile] [mode]',
   );
   process.exit(1);
 }
@@ -223,37 +223,43 @@ function generateChangelog(fromTag, toTag) {
 const changelog = generateChangelog(fromTag, toTag);
 
 if (outputFile) {
-  // Check if file exists and read its content
-  let existingContent = '';
-  try {
-    if (fs.existsSync(outputFile)) {
-      existingContent = fs.readFileSync(outputFile, 'utf8');
-    }
-  } catch (error) {
-    console.error(`Error reading existing changelog: ${error.message}`);
-  }
-
-  // If this is the first entry, just write the new changelog
-  if (!existingContent) {
+  // For release notes mode, just write the current changelog
+  if (mode === 'release-notes') {
     fs.writeFileSync(outputFile, changelog);
+    console.log(`Release notes written to ${outputFile}`);
   } else {
-    // Otherwise, prepend the new changelog to the existing content
-    // Find the first heading (# [...]) in the existing content
-    const firstHeadingMatch = existingContent.match(/^# \[.*?\]/m);
-
-    if (firstHeadingMatch) {
-      const index = existingContent.indexOf(firstHeadingMatch[0]);
-      // Insert the new changelog before the first existing entry
-      const updatedContent = `${existingContent.substring(0, index)}${changelog}\n\n${existingContent.substring(index)}`;
-
-      fs.writeFileSync(outputFile, updatedContent);
-    } else {
-      // If no existing heading found, just append
-      fs.writeFileSync(outputFile, `${changelog}\n\n${existingContent}`);
+    // Check if file exists and read its content
+    let existingContent = '';
+    try {
+      if (fs.existsSync(outputFile)) {
+        existingContent = fs.readFileSync(outputFile, 'utf8');
+      }
+    } catch (error) {
+      console.error(`Error reading existing changelog: ${error.message}`);
     }
-  }
 
-  console.log(`Changelog written to ${outputFile}`);
+    // If this is the first entry, just write the new changelog
+    if (!existingContent) {
+      fs.writeFileSync(outputFile, changelog);
+    } else {
+      // Otherwise, prepend the new changelog to the existing content
+      // Find the first heading (# [...]) in the existing content
+      const firstHeadingMatch = existingContent.match(/^# \[.*?\]/m);
+
+      if (firstHeadingMatch) {
+        const index = existingContent.indexOf(firstHeadingMatch[0]);
+        // Insert the new changelog before the first existing entry
+        const updatedContent = `${existingContent.substring(0, index)}${changelog}\n\n${existingContent.substring(index)}`;
+
+        fs.writeFileSync(outputFile, updatedContent);
+      } else {
+        // If no existing heading found, just append
+        fs.writeFileSync(outputFile, `${changelog}\n\n${existingContent}`);
+      }
+    }
+
+    console.log(`Changelog written to ${outputFile}`);
+  }
 } else {
   console.log(changelog);
 }
