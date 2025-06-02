@@ -151,14 +151,8 @@ jobs:
           echo "NEW_TAG=$NEW_TAG" >> "$GITHUB_ENV"
           echo "Generated new tag: $NEW_TAG"
 
-      - name: Create and push git tag
-        run: |
-          git tag $NEW_TAG
-          git push origin $NEW_TAG
-
-      - name: Generate and create GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check for changes since previous release
+        id: check_changes
         run: |
           # Find the previous tag for this branch pattern
           if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
@@ -173,19 +167,34 @@ jobs:
             # If no previous tag, get the first commit
             PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
             echo "No previous tag found, using first commit: $PREVIOUS_TAG"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
           else
             echo "Previous tag found: $PREVIOUS_TAG"
+            
+            # Check if there are any changes between the previous tag and HEAD
+            CHANGES=$(git log --oneline $PREVIOUS_TAG..HEAD | grep -v "\[skip ci\]" || echo "")
+            if [[ -z "$CHANGES" ]]; then
+              echo "No changes detected since $PREVIOUS_TAG. Skipping release."
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Changes detected since $PREVIOUS_TAG. Proceeding with release."
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
           
-          # Check if there are any changes between the previous tag and HEAD
-          CHANGES=$(git log --oneline $PREVIOUS_TAG..HEAD | grep -v "\[skip ci\]" || echo "")
-          if [[ -z "$CHANGES" ]]; then
-            echo "No changes detected since $PREVIOUS_TAG. Skipping release."
-            exit 0
-          fi
-          
-          echo "Changes detected since $PREVIOUS_TAG. Proceeding with release."
-          
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
+
+      - name: Create and push git tag
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
+
+      - name: Generate and create GitHub release
+        if: steps.check_changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
             # Generate full changelog for CHANGELOG.md file
             echo "Generating full changelog for CHANGELOG.md"
@@ -214,7 +223,7 @@ jobs:
           rm -f "$RELEASE_NOTES_FILE"
 
       - name: Start next development cycle on dev
-        if: env.RELEASE_BRANCH == 'main'
+        if: env.RELEASE_BRANCH == 'main' && steps.check_changes.outputs.has_changes == 'true'
         run: |
           git fetch origin
           git checkout -b dev origin/dev
