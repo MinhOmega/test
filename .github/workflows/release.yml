@@ -3,7 +3,7 @@ name: Release
 on:
   schedule:
     # Run every 5 minutes - only for dev branch
-    - cron: "*/5 * * * *"
+    - cron: "0 17 * * *"
   workflow_dispatch:
     inputs:
       branch:
