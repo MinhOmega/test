@@ -14,6 +14,7 @@ const COMMIT_TYPES = {
   docs: 'Documentation',
   style: 'Styles',
   chore: 'Chores',
+  ci: 'CI/CD',
 };
 
 // Get arguments
@@ -26,13 +27,15 @@ if (!fromTag || !toTag) {
   process.exit(1);
 }
 
-// Get repository info
+// Get repository info dynamically
 function getRepoInfo() {
   try {
     const remoteUrl = execSync('git config --get remote.origin.url')
       .toString()
       .trim();
     let repoPath;
+    let organization;
+    let repoName;
 
     if (remoteUrl.startsWith('git@github.com:')) {
       repoPath = remoteUrl.replace('git@github.com:', '').replace('.git', '');
@@ -41,20 +44,43 @@ function getRepoInfo() {
         .replace('https://github.com/', '')
         .replace('.git', '');
     } else {
-      // Default fallback
-      repoPath = 'organization/repo';
+      console.warn('Unable to parse GitHub repository URL from git remote');
+      // Try to get from package.json if available
+      try {
+        const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+        if (packageJson.repository?.url) {
+          const url = packageJson.repository.url;
+          if (url.includes('github.com')) {
+            repoPath = url.replace(/.*github\.com[/:]/, '').replace('.git', '');
+          }
+        }
+      } catch (error) {
+        console.warn('Could not extract repository info from package.json');
+      }
+
+      if (!repoPath) {
+        throw new Error('Could not determine repository information');
+      }
+    }
+
+    // Extract organization and repo name from path
+    const pathParts = repoPath.split('/');
+    if (pathParts.length >= 2) {
+      organization = pathParts[0];
+      repoName = pathParts[1];
+    } else {
+      throw new Error('Invalid repository path format');
     }
 
     return {
       repoUrl: `https://github.com/${repoPath}`,
       repoPath,
+      organization,
+      repoName,
     };
   } catch (error) {
-    console.error('Error getting repository info:', error);
-    return {
-      repoUrl: 'https://github.com/organization/repo',
-      repoPath: 'organization/repo',
-    };
+    console.error('Error getting repository info:', error.message);
+    process.exit(1);
   }
 }
 
@@ -79,6 +105,56 @@ function parseCommitMessage(message) {
   return { type, scope, subject };
 }
 
+// Get GitHub username from author email or name
+function getGitHubUsername(author, email, hash) {
+  try {
+    // If email contains github username pattern
+    if (email.includes('@users.noreply.github.com')) {
+      const match = email.match(/^(\d+\+)?(.+)@users\.noreply\.github\.com$/);
+      if (match) {
+        return match[2];
+      }
+    }
+
+    // Try to get from git config or commit info
+    try {
+      const gitConfigCommand = `git log -1 ${hash} --pretty=format:"%an|%ae|%cN|%cE"`;
+      const output = execSync(gitConfigCommand).toString().trim();
+      const [, , committerName, committerEmail] = output.split('|');
+
+      if (committerEmail.includes('@users.noreply.github.com')) {
+        const match = committerEmail.match(
+          /^(\d+\+)?(.+)@users\.noreply\.github\.com$/,
+        );
+        if (match) {
+          return match[2];
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+
+    // Try to extract username from email domain or author name
+    // Remove common email domains and use the part before @
+    const emailUsername = email.split('@')[0];
+
+    // Clean up potential usernames by removing dots, numbers at start, etc.
+    const cleanUsername = emailUsername
+      .replace(/\./g, '')
+      .replace(/^\d+/, '')
+      .replace(/[^a-zA-Z0-9\-_]/g, '');
+
+    if (cleanUsername.length > 2) {
+      return cleanUsername;
+    }
+
+    // Fallback: clean up author name
+    return author.replace(/\s+/g, '').replace(/[^a-zA-Z0-9\-_]/g, '');
+  } catch (error) {
+    return author.replace(/\s+/g, '').replace(/[^a-zA-Z0-9\-_]/g, '');
+  }
+}
+
 // Get commits between tags
 function getCommitsBetweenTags(fromTag, toTag) {
   try {
@@ -95,7 +171,8 @@ function getCommitsBetweenTags(fromTag, toTag) {
         // Skip GitHub Actions bot commits
         if (
           email === '41898282+github-actions[bot]@users.noreply.github.com' ||
-          author === 'github-actions[bot]'
+          author === 'github-actions[bot]' ||
+          email.includes('github-actions[bot]')
         ) {
           return null;
         }
@@ -104,11 +181,14 @@ function getCommitsBetweenTags(fromTag, toTag) {
 
         if (!parsedCommit) return null;
 
+        const username = getGitHubUsername(author, email, hash);
+
         return {
           hash,
           ...parsedCommit,
           author,
           email,
+          username,
         };
       })
       .filter(Boolean); // Remove null entries
@@ -125,52 +205,92 @@ function getPRNumber(hash) {
     const command = `git show --format=%B -s ${hash}`;
     const commitMessage = execSync(command).toString().trim();
 
-    // Look for PR references like (#123) or #123
+    // Look for PR references like (#123) or Merge pull request #123
     const prMatch =
-      commitMessage.match(/\(#(\d+)\)/) || commitMessage.match(/#(\d+)/);
+      commitMessage.match(/\(#(\d+)\)/) ||
+      commitMessage.match(/Merge pull request #(\d+)/) ||
+      commitMessage.match(/#(\d+)/);
     return prMatch ? prMatch[1] : null;
   } catch (error) {
     return null;
   }
 }
 
-// Get contributor information
-function getContributors(commits) {
-  const contributors = {};
-
-  commits.forEach((commit) => {
-    const { author, email, hash } = commit;
-
-    if (!contributors[email]) {
-      // Get GitHub username if possible
-      let username = author;
-      try {
-        const gitLogCommand = `git log -1 ${hash} --pretty=format:"%an|%ae|%cN|%cE"`;
-        const output = execSync(gitLogCommand).toString().trim();
-        const [, , committerName, committerEmail] = output.split('|');
-
-        // Try to get GitHub username from commit
-        if (committerEmail.includes('@users.noreply.github.com')) {
-          username = committerEmail.split('@')[0];
-        }
-      } catch (error) {
-        // Ignore errors, use author name as fallback
-      }
-
-      contributors[email] = {
-        name: author,
-        username,
-        commits: [],
-      };
+// Get the appropriate previous tag for comparison
+function getPreviousTag(currentTag) {
+  try {
+    // Determine the branch pattern based on current tag
+    let pattern;
+    if (currentTag.includes('-beta.')) {
+      // For beta tags, find previous beta tag
+      pattern = 'v*-beta.*';
+    } else if (currentTag.includes('-rc.')) {
+      // For rc tags, find previous rc tag
+      pattern = 'v*-rc.*';
+    } else {
+      // For production tags, find previous production tag (no pre-release identifier)
+      pattern = 'v*';
     }
 
-    contributors[email].commits.push(hash);
-  });
+    // Get all tags matching the pattern, sorted by version
+    const gitTagCommand = `git tag -l "${pattern}" --sort=-version:refname`;
+    const tags = execSync(gitTagCommand)
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean);
 
-  return Object.values(contributors);
+    // Find the index of current tag and get the previous one
+    const currentIndex = tags.indexOf(currentTag);
+    if (currentIndex > 0 && currentIndex < tags.length) {
+      return tags[currentIndex + 1];
+    }
+
+    // If no previous tag found with same pattern, get the latest tag overall
+    const allTagsCommand = `git tag --sort=-version:refname`;
+    const allTags = execSync(allTagsCommand)
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean);
+    const allCurrentIndex = allTags.indexOf(currentTag);
+    if (allCurrentIndex > 0 && allCurrentIndex < allTags.length) {
+      return allTags[allCurrentIndex + 1];
+    }
+
+    // Fallback to first commit
+    return execSync('git rev-list --max-parents=0 HEAD').toString().trim();
+  } catch (error) {
+    console.error('Error getting previous tag:', error);
+    return execSync('git rev-list --max-parents=0 HEAD').toString().trim();
+  }
 }
 
-// Generate markdown for the changelog
+// Generate GitHub-style release notes
+function generateGitHubReleaseNotes(fromTag, toTag) {
+  const { repoUrl, repoPath } = getRepoInfo();
+  const commits = getCommitsBetweenTags(fromTag, toTag);
+
+  if (commits.length === 0) {
+    return `## What's Changed\n\nNo changes in this release.\n\n**Full Changelog**: ${repoUrl}/compare/${fromTag}...${toTag}`;
+  }
+
+  let releaseNotes = `## What's Changed\n`;
+
+  commits.forEach((commit) => {
+    const prNumber = getPRNumber(commit.hash);
+    const scopeText = commit.scope ? `**${commit.scope}:** ` : '';
+    const prLink = prNumber ? ` in ${repoUrl}/pull/${prNumber}` : '';
+
+    releaseNotes += `* ${commit.type}: ${scopeText}${commit.subject} by @${commit.username}${prLink}\n`;
+  });
+
+  releaseNotes += `\n**Full Changelog**: ${repoUrl}/compare/${fromTag}...${toTag}`;
+
+  return releaseNotes;
+}
+
+// Generate traditional changelog format
 function generateChangelog(fromTag, toTag) {
   const { repoUrl, repoPath } = getRepoInfo();
   const currentDate = getCurrentDate();
@@ -205,27 +325,21 @@ function generateChangelog(fromTag, toTag) {
     }
   });
 
-  // Add contributors section
-  const contributors = getContributors(commits);
-  if (contributors.length > 0) {
-    changelog += `\n### Contributors to this release\n\n`;
-
-    contributors.forEach((contributor) => {
-      const commitCount = contributor.commits.length;
-      changelog += `- <img src="https://avatars.githubusercontent.com/${contributor.username}?v=4&s=18" alt="avatar" width="18"/> [${contributor.name}](https://github.com/${contributor.username}) +${commitCount} commit${commitCount > 1 ? 's' : ''}\n`;
-    });
-  }
-
   return changelog;
 }
 
 // Main execution
-const changelog = generateChangelog(fromTag, toTag);
+let content;
+
+if (mode === 'release-notes') {
+  content = generateGitHubReleaseNotes(fromTag, toTag);
+} else {
+  content = generateChangelog(fromTag, toTag);
+}
 
 if (outputFile) {
-  // For release notes mode, just write the current changelog
   if (mode === 'release-notes') {
-    fs.writeFileSync(outputFile, changelog);
+    fs.writeFileSync(outputFile, content);
     console.log(`Release notes written to ${outputFile}`);
   } else {
     // Check if file exists and read its content
@@ -240,7 +354,7 @@ if (outputFile) {
 
     // If this is the first entry, just write the new changelog
     if (!existingContent) {
-      fs.writeFileSync(outputFile, changelog);
+      fs.writeFileSync(outputFile, content);
     } else {
       // Otherwise, prepend the new changelog to the existing content
       // Find the first heading (# [...]) in the existing content
@@ -249,17 +363,17 @@ if (outputFile) {
       if (firstHeadingMatch) {
         const index = existingContent.indexOf(firstHeadingMatch[0]);
         // Insert the new changelog before the first existing entry
-        const updatedContent = `${existingContent.substring(0, index)}${changelog}\n\n${existingContent.substring(index)}`;
+        const updatedContent = `${existingContent.substring(0, index)}${content}\n\n${existingContent.substring(index)}`;
 
         fs.writeFileSync(outputFile, updatedContent);
       } else {
         // If no existing heading found, just append
-        fs.writeFileSync(outputFile, `${changelog}\n\n${existingContent}`);
+        fs.writeFileSync(outputFile, `${content}\n\n${existingContent}`);
       }
     }
 
     console.log(`Changelog written to ${outputFile}`);
   }
 } else {
-  console.log(changelog);
+  console.log(content);
 }

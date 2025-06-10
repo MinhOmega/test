@@ -2,8 +2,8 @@ name: Release
 
 on:
   schedule:
-    # Run every 5 minutes - only for dev branch
-    - cron: "*/5 * * * *"
+    # Run at 11:30 AM GMT+7 every day (4:30 AM UTC)
+    - cron: "30 4 * * *"
   workflow_dispatch:
     inputs:
       branch:
@@ -22,7 +22,7 @@ on:
 
 jobs:
   release:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') && (github.event_name != 'schedule' || github.ref_name == 'dev') }}
     name: Release on ${{ github.event.inputs.branch || github.ref_name }}
     runs-on: ubuntu-latest
 
@@ -151,23 +151,51 @@ jobs:
           echo "NEW_TAG=$NEW_TAG" >> "$GITHUB_ENV"
           echo "Generated new tag: $NEW_TAG"
 
+      - name: Check for changes since previous release
+        id: check_changes
+        run: |
+          # Find the previous tag for this branch pattern
+          if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
+          elif [[ "${{ env.RELEASE_BRANCH }}" == "staging" ]]; then
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E "v.*-rc\.[0-9]+" | head -n 2 | tail -n 1 || echo "")
+          else # dev branch
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E "v.*-beta\.[0-9]+" | head -n 2 | tail -n 1 || echo "")
+          fi
+
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            # If no previous tag, get the first commit
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+            echo "No previous tag found, using first commit: $PREVIOUS_TAG"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Previous tag found: $PREVIOUS_TAG"
+            
+            # Check if there are any changes between the previous tag and HEAD
+            CHANGES=$(git log --oneline $PREVIOUS_TAG..HEAD | grep -v "\[skip ci\]" || echo "")
+            if [[ -z "$CHANGES" ]]; then
+              echo "No changes detected since $PREVIOUS_TAG. Skipping release."
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Changes detected since $PREVIOUS_TAG. Proceeding with release."
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
+
       - name: Create and push git tag
+        if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git tag $NEW_TAG
           git push origin $NEW_TAG
 
       - name: Generate and create GitHub release
+        if: steps.check_changes.outputs.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ "${{ env.RELEASE_BRANCH }}" == "main" ]]; then
-            # Find the previous release tag
-            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
-            if [[ -z "$PREVIOUS_TAG" ]]; then
-              # If no previous tag, get the first commit
-              PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
-            fi
-            
             # Generate full changelog for CHANGELOG.md file
             echo "Generating full changelog for CHANGELOG.md"
             node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "CHANGELOG.md"
@@ -181,24 +209,21 @@ jobs:
               git commit -m "docs: update CHANGELOG.md for $NEW_TAG [skip ci]"
               git push origin ${{ env.RELEASE_BRANCH }}
             fi
-            
-            # Generate release-specific changelog for release notes
-            echo "Generating release notes for GitHub release"
-            RELEASE_NOTES_FILE="RELEASE_NOTES_$NEW_TAG.md"
-            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "$RELEASE_NOTES_FILE" "release-notes"
-            
-            # Create release with release-specific changelog
-            gh release create "$NEW_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
-            
-            # Clean up temporary file
-            rm -f "$RELEASE_NOTES_FILE"
-          else
-            # For non-main branches, just create the release with auto-generated notes
-            gh release create "$NEW_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
           fi
 
+          # For all branches, generate GitHub-style release notes
+          echo "Generating GitHub-style release notes"
+          RELEASE_NOTES_FILE="RELEASE_NOTES_$NEW_TAG.md"
+          node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "$RELEASE_NOTES_FILE" "release-notes"
+
+          # Create release with GitHub-style release notes
+          gh release create "$NEW_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
+
+          # Clean up temporary file
+          rm -f "$RELEASE_NOTES_FILE"
+
       - name: Start next development cycle on dev
-        if: env.RELEASE_BRANCH == 'main'
+        if: env.RELEASE_BRANCH == 'main' && steps.check_changes.outputs.has_changes == 'true'
         run: |
           git fetch origin
           git checkout -b dev origin/dev
