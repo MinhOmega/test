@@ -143,15 +143,22 @@ jobs:
             PRERELEASE_FLAG=""
           fi
 
+          # Find the previous tag based on branch pattern
           if [[ "$TARGET_BRANCH" == "main" ]]; then
-            # Find the previous release tag
             PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "beta\|rc" | head -n 2 | tail -n 1 || echo "")
-            if [[ -z "$PREVIOUS_TAG" ]]; then
-              # If no previous tag, get the first commit
-              PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
-            fi
-            
-            # Generate changelog
+          elif [[ "$TARGET_BRANCH" == "staging" ]]; then
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E "v.*-rc\.[0-9]+" | head -n 2 | tail -n 1 || echo "")
+          else # dev branch
+            PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E "v.*-beta\.[0-9]+" | head -n 2 | tail -n 1 || echo "")
+          fi
+
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            # If no previous tag, get the first commit
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          if [[ "$TARGET_BRANCH" == "main" ]]; then
+            # Generate changelog for CHANGELOG.md
             echo "Generating changelog from $PREVIOUS_TAG to $VERSION_TAG"
             node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "CHANGELOG.md"
             
@@ -164,18 +171,15 @@ jobs:
               git commit -m "docs: update CHANGELOG.md for $VERSION_TAG [skip ci]"
               git push origin $TARGET_BRANCH
             fi
-            
-            # Generate release-specific changelog for release notes
-            echo "Generating release notes for GitHub release"
-            RELEASE_NOTES_FILE="RELEASE_NOTES_$VERSION_TAG.md"
-            node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "$RELEASE_NOTES_FILE" "release-notes"
-            
-            # Create release with release-specific changelog
-            gh release create "$VERSION_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
-            
-            # Clean up temporary file
-            rm -f "$RELEASE_NOTES_FILE"
-          else
-            # For non-main branches, just create the release with auto-generated notes
-            gh release create "$VERSION_TAG" --generate-notes $PRERELEASE_FLAG --title "$RELEASE_TITLE"
           fi
+
+          # For all branches, generate GitHub-style release notes
+          echo "Generating GitHub-style release notes from $PREVIOUS_TAG to $VERSION_TAG"
+          RELEASE_NOTES_FILE="RELEASE_NOTES_$VERSION_TAG.md"
+          node scripts/changelog-generator.js "$PREVIOUS_TAG" "$VERSION_TAG" "$RELEASE_NOTES_FILE" "release-notes"
+
+          # Create release with GitHub-style release notes
+          gh release create "$VERSION_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE"
+
+          # Clean up temporary file
+          rm -f "$RELEASE_NOTES_FILE"

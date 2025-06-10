@@ -2,8 +2,8 @@ name: Release
 
 on:
   schedule:
-    # Run every 5 minutes - only for dev branch
-    - cron: "0 17 * * *"
+    # Run at 11:30 AM GMT+7 every day (4:30 AM UTC)
+    - cron: "30 4 * * *"
   workflow_dispatch:
     inputs:
       branch:
@@ -162,7 +162,7 @@ jobs:
           else # dev branch
             PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E "v.*-beta\.[0-9]+" | head -n 2 | tail -n 1 || echo "")
           fi
-          
+
           if [[ -z "$PREVIOUS_TAG" ]]; then
             # If no previous tag, get the first commit
             PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
@@ -181,7 +181,7 @@ jobs:
               echo "has_changes=true" >> "$GITHUB_OUTPUT"
             fi
           fi
-          
+
           echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> "$GITHUB_ENV"
 
       - name: Create and push git tag
@@ -210,15 +210,15 @@ jobs:
               git push origin ${{ env.RELEASE_BRANCH }}
             fi
           fi
-          
-          # For all branches, generate release-specific changelog for release notes
-          echo "Generating release notes for GitHub release"
+
+          # For all branches, generate GitHub-style release notes
+          echo "Generating GitHub-style release notes"
           RELEASE_NOTES_FILE="RELEASE_NOTES_$NEW_TAG.md"
           node scripts/changelog-generator.js "$PREVIOUS_TAG" "$NEW_TAG" "$RELEASE_NOTES_FILE" "release-notes"
-          
-          # Create release with release-specific changelog
+
+          # Create release with GitHub-style release notes
           gh release create "$NEW_TAG" --notes-file "$RELEASE_NOTES_FILE" $PRERELEASE_FLAG --title "$RELEASE_TITLE_PREFIX$NEW_TAG"
-          
+
           # Clean up temporary file
           rm -f "$RELEASE_NOTES_FILE"
 
